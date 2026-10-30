@@ -82,12 +82,76 @@ theformula <- bf(rottasaalis ~ log_effort * asemamalli_faktori +
 
 #####
 
+# priors
+#####
+
+# Prior sensitivity analysis: refit the model with zero-centred normal(0, 1)
+# priors for fixed effects (priors for all other parameters unchanged)
+
+priors_sensitivity <- c(
+  set_prior("normal(0, 1)", class = "b")
+)
+
+
+## Option 1: load the fitted sensitivity model (recommended)
+
+# download helsinkirats_model_sensitivity.rds from Zenodo
+helsinkirats_model_sensitivity <- readRDS(
+  paste0(path, "helsinkirats_model_sensitivity.rds")
+)
+
+
+## Option 2: reproduce the sensitivity model from the published data
+## This may take several hours
+
+# refit the model by uncommenting:
+# helsinkirats_model_sensitivity <- brm(
+#   formula = theformula,
+#   data = helsinkirats_data,
+#   family = negbinomial(),
+#   prior = priors_sensitivity,
+#   chains = 3,
+#   cores = 3,
+#   iter = 4000,
+#   warmup = 2000,
+#   threads = threading(2),
+#   backend = "cmdstanr",
+#   save_pars = save_pars(all = TRUE),
+#   control = list(adapt_delta = 0.95)
+# )
+# saveRDS(
+#   helsinkirats_model_sensitivity,
+#   file = paste0(path, "helsinkirats_model_sensitivity.rds")
+# )
+
+
+# comparison of fixed effects between the original and sensitivity models
+sensitivity_comparison <- bind_rows(
+  as.data.frame(fixef(helsinkirats_model)) %>%
+    rownames_to_column("Variable") %>%
+    mutate(Model = "Original"),
+  as.data.frame(fixef(helsinkirats_model_sensitivity)) %>%
+    rownames_to_column("Variable") %>%
+    mutate(Model = "Sensitivity")
+)
+
+print(sensitivity_comparison)
+
+# write.csv(sensitivity_comparison,
+#           "prior_sensitivity_comparison.csv",
+#           row.names = FALSE)
+
+#####
+
 # diagnostics
 #####
 
 # R2-values
 the_R2cond <- bayes_R2(helsinkirats_model)
 the_R2marg <- bayes_R2(helsinkirats_model, re_formula = NA)
+
+# intra-class correlation coefficient variance decomposition
+icc_variance_decomp  <- performance::variance_decomposition(helsinkirats_model)
 
 # LOO & Moment Match
 if (!"loo" %in% names(helsinkirats_model$criteria)) {
@@ -104,6 +168,8 @@ the_res <- createDHARMa(
                                   2, mean),
   integerResponse = TRUE)
 
+# multicollinearity assessment
+collinearity_results <- performance::check_collinearity(helsinkirats_model)
 
 # diagnostic summaries
 ###
@@ -115,6 +181,8 @@ print(helsinkirats_model$criteria$loo)
 # bayesian R2
 round(mean(the_R2marg), 3)
 round(mean(the_R2cond), 3)
+# ICC variance decomposition
+print(icc_variance_decomp )
 # dharma residuals
 print(testDispersion(the_res, plot = FALSE))
 # outliers
@@ -123,6 +191,8 @@ print(testOutliers(the_res, plot = FALSE))
 print(testZeroInflation(the_res, plot = FALSE))
 # temporal autocorrelation
 print(testTemporalAutocorrelation(the_res, time = helsinkirats_model$data$pvm, plot = FALSE))
+# collinearity test
+print(collinearity_results)
 ###
 
 # diagnostic plots
@@ -371,5 +441,9 @@ rm(
   y_max,
   effects_df,
   effects_summary
+  priors_sensitivity, 
+  sensitivity_comparison, 
+  icc_variance_decomp, 
+  collinearity_results
 )
 #####
